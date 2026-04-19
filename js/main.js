@@ -5,7 +5,9 @@ import {
     renderWeekView, changeWeekView,
     renderAgendaView,
     renderWeeklyPlanView, changeWeeklyPlanView, updateWeeklyPlanPeriods, saveWeeklyPlan,
-    getFormatDateStr
+    getFormatDateStr,
+    openWeeklyPlanModal, closeWeeklyPlanModal, saveWeeklyPlanModal, deleteWeeklyPlanModal,
+    resetWeeklyPlanModal, toggleCutWeeklyPlanModal, renderWpModalButtons, changeWpModalSource, updateWpModalBaseStatus
 } from './calendar.js';
 import * as Memo from './memo.js';
 
@@ -336,187 +338,6 @@ const toggleTaskGlobal = (dateStr, taskId, completed) => {
             renderCurrentView();
         }
     }
-};
-
-
-// ==========================================
-// 週案簿 モーダル制御
-// ==========================================
-const openWeeklyPlanModal = (dateStr, periodId, periodName) => {
-    const isSpecial = periodId.startsWith('sp_');
-    appState.wpModalTarget = { targetDateStr: dateStr, targetPeriodId: periodId, targetPeriodName: periodName, isSpecial: isSpecial };
-    
-    const classInputArea = document.getElementById('wp-modal-class-area');
-    const deleteBtn = document.getElementById('wp-modal-delete-btn');
-    const resetBtn = document.getElementById('wp-modal-reset-btn');
-    const modalTitle = document.getElementById('wp-modal-title');
-    const memoInput = document.getElementById('wp-modal-memo');
-
-    const dObj = new Date(dateStr);
-    const dayOfWeek = dObj.getDay(); 
-    const defaultDay = (dayOfWeek >= 1 && dayOfWeek <= 5) ? dayOfWeek : 1;
-    const defaultPeriod = parseInt(periodName.replace(/[^0-9]/g, '')) || 1;
-
-    const data = appState.allPlanners[dateStr] || {};
-    const cData = (data.classes && data.classes[periodId]) ? data.classes[periodId] : null;
-
-    if (isSpecial) {
-        classInputArea.classList.add('hidden');
-        modalTitle.innerHTML = `<i class="fas fa-sun mr-1"></i>${periodName}の予定`;
-        document.getElementById('wp-modal-base-status').classList.add('hidden');
-        document.getElementById('wp-modal-time-config').classList.add('hidden');
-        
-        deleteBtn.innerHTML = cData && cData.isCut ? 'カット解除' : '時間カット';
-        deleteBtn.onclick = () => toggleCutWeeklyPlanModal();
-        deleteBtn.className = "bg-orange-50 border border-orange-200 text-orange-600 font-bold py-1.5 px-2 rounded hover:bg-orange-100 transition shadow-sm text-xs";
-        
-        resetBtn.classList.add('hidden');
-        memoInput.value = cData ? (cData.memo || "") : "";
-        memoInput.placeholder = "予定やタスクを入力...";
-    } else {
-        classInputArea.classList.remove('hidden');
-        modalTitle.innerHTML = `<i class="fas fa-chalkboard-teacher mr-1"></i>授業予定`;
-        document.getElementById('wp-modal-base-status').classList.remove('hidden');
-        document.getElementById('wp-modal-time-config').classList.remove('hidden');
-        
-        deleteBtn.innerHTML = '空きコマ';
-        deleteBtn.onclick = () => deleteWeeklyPlanModal();
-        deleteBtn.className = "bg-red-50 border border-red-200 text-red-600 font-bold py-1.5 px-2 rounded hover:bg-red-100 transition shadow-sm text-xs";
-        resetBtn.classList.remove('hidden');
-
-        appState.wpSelectedDay = cData && cData.sourceDay !== undefined ? cData.sourceDay : defaultDay;
-        appState.wpSelectedPeriod = cData && cData.sourcePeriod !== undefined ? cData.sourcePeriod : defaultPeriod;
-
-        let initialCls = "", initialSub = "", initialMemo = "";
-        if (cData && !cData.disabled) {
-            initialCls = cData.cls || "";
-            initialSub = cData.sub || "";
-            initialMemo = cData.memo || "";
-        }
-
-        document.getElementById('wp-modal-cls').value = initialCls;
-        document.getElementById('wp-modal-sub').value = initialSub;
-        memoInput.value = initialMemo;
-        memoInput.placeholder = "単元名や連絡事項など...";
-
-        renderWpModalButtons();
-        updateWpModalBaseStatus();
-    }
-
-    document.getElementById('weekly-plan-modal').classList.remove('hidden');
-    document.getElementById('weekly-plan-modal').classList.add('flex');
-};
-
-const closeWeeklyPlanModal = () => {
-    document.getElementById('weekly-plan-modal').classList.add('hidden');
-    document.getElementById('weekly-plan-modal').classList.remove('flex');
-};
-
-const renderWpModalButtons = () => {
-    const daysContainer = document.getElementById('wp-modal-days');
-    const periodsContainer = document.getElementById('wp-modal-periods');
-    
-    let daysHtml = '';
-    const dayNames = ['月', '火', '水', '木', '金'];
-    for(let i=1; i<=5; i++) {
-        const isSelected = appState.wpSelectedDay === i;
-        const baseClass = isSelected ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
-        daysHtml += `<button onclick="window.changeWpModalSource('day', ${i})" class="px-2 py-1 rounded text-xs font-bold border transition ${baseClass}">${dayNames[i-1]}</button>`;
-    }
-    daysContainer.innerHTML = daysHtml;
-
-    const data = appState.allPlanners[appState.wpModalTarget.targetDateStr] || {};
-    const ttType = data.timetableType !== undefined ? data.timetableType : 'normal';
-    const ttPeriods = ttType !== 'none' ? appState.globalSettings.timetables[ttType].periods.filter(p=>p.id!=='p_allday'&&!p.isAllDay) : [];
-    const maxPeriods = ttPeriods.length > 0 ? ttPeriods.length : 6;
-
-    let periodsHtml = '';
-    for(let i=1; i<=maxPeriods; i++) {
-        const isSelected = appState.wpSelectedPeriod === i;
-        const baseClass = isSelected ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
-        periodsHtml += `<button onclick="window.changeWpModalSource('period', ${i})" class="w-7 h-7 rounded text-xs font-bold border transition flex items-center justify-center ${baseClass}">${i}</button>`;
-    }
-    periodsContainer.innerHTML = periodsHtml;
-};
-
-const changeWpModalSource = (type, val) => {
-    if (type === 'day') appState.wpSelectedDay = val;
-    if (type === 'period') appState.wpSelectedPeriod = val;
-    renderWpModalButtons();
-    updateWpModalBaseStatus();
-};
-
-const updateWpModalBaseStatus = () => {
-    const statusEl = document.getElementById('wp-modal-base-status');
-    const dayNames = ['月', '火', '水', '木', '金'];
-    const dName = dayNames[appState.wpSelectedDay - 1];
-    
-    const dObj = new Date(appState.wpModalTarget.targetDateStr);
-    const origDay = dObj.getDay();
-    const origPeriod = parseInt(appState.wpModalTarget.targetPeriodName.replace(/[^0-9]/g, '')) || 1;
-    
-    if (appState.wpSelectedDay === origDay && appState.wpSelectedPeriod === origPeriod) {
-        statusEl.innerHTML = `<i class="fas fa-info-circle mr-1"></i> 通常の授業（${dName}曜${appState.wpSelectedPeriod}限）`;
-        statusEl.className = "bg-gray-50 rounded text-center p-1.5 text-xs font-bold text-[#4a5f73] border border-gray-200 shadow-sm transition-all";
-    } else {
-        statusEl.innerHTML = `<i class="fas fa-exchange-alt mr-1"></i> 時間割変更：${dName}曜${appState.wpSelectedPeriod}限の授業を行います`;
-        statusEl.className = "bg-orange-50 rounded text-center p-1.5 text-xs font-bold text-orange-700 border border-orange-200 shadow-sm transition-all";
-    }
-};
-
-const saveWeeklyPlanModal = () => {
-    saveStateToHistory();
-    const { targetDateStr, targetPeriodId, isSpecial } = appState.wpModalTarget;
-    if (!appState.allPlanners[targetDateStr]) appState.allPlanners[targetDateStr] = { classes: {}, reminders: [], events: [] };
-    if (!appState.allPlanners[targetDateStr].classes) appState.allPlanners[targetDateStr].classes = {};
-    
-    const memo = document.getElementById('wp-modal-memo').value.trim();
-
-    if (isSpecial) {
-        const currentData = appState.allPlanners[targetDateStr].classes[targetPeriodId] || {};
-        appState.allPlanners[targetDateStr].classes[targetPeriodId] = { memo: memo, isCut: currentData.isCut || false };
-    } else {
-        const cls = document.getElementById('wp-modal-cls').value.trim();
-        const sub = document.getElementById('wp-modal-sub').value.trim();
-        
-        appState.allPlanners[targetDateStr].classes[targetPeriodId] = {
-            cls: cls, sub: sub, memo: memo, sourceDay: appState.wpSelectedDay, sourcePeriod: appState.wpSelectedPeriod, disabled: false
-        };
-    }
-    
-    safeSetItem(LS_KEY, JSON.stringify(appState.allPlanners)); saveToFirebase(); renderCurrentView(); closeWeeklyPlanModal();
-};
-
-const toggleCutWeeklyPlanModal = () => {
-    saveStateToHistory();
-    const { targetDateStr, targetPeriodId } = appState.wpModalTarget;
-    if (!appState.allPlanners[targetDateStr]) appState.allPlanners[targetDateStr] = { classes: {}, reminders: [], events: [] };
-    if (!appState.allPlanners[targetDateStr].classes) appState.allPlanners[targetDateStr].classes = {};
-    
-    const currentData = appState.allPlanners[targetDateStr].classes[targetPeriodId] || {};
-    const memo = document.getElementById('wp-modal-memo').value.trim();
-
-    appState.allPlanners[targetDateStr].classes[targetPeriodId] = { memo: memo, isCut: !currentData.isCut };
-    safeSetItem(LS_KEY, JSON.stringify(appState.allPlanners)); saveToFirebase(); renderCurrentView(); closeWeeklyPlanModal();
-};
-
-const deleteWeeklyPlanModal = () => {
-    saveStateToHistory();
-    const { targetDateStr, targetPeriodId } = appState.wpModalTarget;
-    if (!appState.allPlanners[targetDateStr]) appState.allPlanners[targetDateStr] = { classes: {}, reminders: [], events: [] };
-    if (!appState.allPlanners[targetDateStr].classes) appState.allPlanners[targetDateStr].classes = {};
-    
-    appState.allPlanners[targetDateStr].classes[targetPeriodId] = { disabled: true };
-    safeSetItem(LS_KEY, JSON.stringify(appState.allPlanners)); saveToFirebase(); renderCurrentView(); closeWeeklyPlanModal();
-};
-
-const resetWeeklyPlanModal = () => {
-    saveStateToHistory();
-    const { targetDateStr, targetPeriodId } = appState.wpModalTarget;
-    if (appState.allPlanners[targetDateStr] && appState.allPlanners[targetDateStr].classes) {
-        delete appState.allPlanners[targetDateStr].classes[targetPeriodId];
-    }
-    safeSetItem(LS_KEY, JSON.stringify(appState.allPlanners)); saveToFirebase(); renderCurrentView(); closeWeeklyPlanModal();
 };
 
 
@@ -1045,6 +866,7 @@ window.toggleTaskGlobal = toggleTaskGlobal;
 // Undo / Redo
 window.undo = undo;
 window.redo = redo;
+window.saveStateToHistory = saveStateToHistory;
 
 // 同期
 window.linkDevice = linkDevice;
@@ -1058,7 +880,7 @@ window.removeSettingsPattern = removeSettingsPattern;
 window.addTtPeriod = addTtPeriod;
 window.removeTtPeriod = removeTtPeriod;
 
-// メモ関連（Memoモジュールの関数を紐付け）
+// メモ関連
 window.toggleMemoSidebar = Memo.toggleMemoSidebar;
 window.selectMemoFilter = Memo.selectMemoFilter;
 window.changeMemoSort = Memo.changeMemoSort;
@@ -1080,3 +902,18 @@ window.setMemoTool = Memo.setMemoTool;
 window.setMemoColor = Memo.setMemoColor;
 window.setMemoLineWidth = Memo.setMemoLineWidth;
 window.clearMemoCanvas = Memo.clearMemoCanvas;
+
+// 週案簿モーダル（calendar.jsから紐付け）
+import { 
+    closeWeeklyPlanModal, saveWeeklyPlanModal, deleteWeeklyPlanModal, resetWeeklyPlanModal,
+    toggleCutWeeklyPlanModal, renderWpModalButtons, changeWpModalSource, updateWpModalBaseStatus
+} from './calendar.js';
+
+window.closeWeeklyPlanModal = closeWeeklyPlanModal;
+window.saveWeeklyPlanModal = saveWeeklyPlanModal;
+window.deleteWeeklyPlanModal = deleteWeeklyPlanModal;
+window.resetWeeklyPlanModal = resetWeeklyPlanModal;
+window.toggleCutWeeklyPlanModal = toggleCutWeeklyPlanModal;
+window.renderWpModalButtons = renderWpModalButtons;
+window.changeWpModalSource = changeWpModalSource;
+window.updateWpModalBaseStatus = updateWpModalBaseStatus;
